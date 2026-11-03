@@ -75,14 +75,14 @@ class ESC50_Dataset(Dataset):
 
     return mel_spec_db, target
 
-def get_validation_dataset():
-  df = pd.read_csv(meta_path)
+def get_validation_dataset(path):
+  df = pd.read_csv(path)
   return df[df['fold'] == 4]
 
-def get_training_dataset():
-  df = pd.read_csv(meta_path)
+def get_training_dataset(path):
+  df = pd.read_csv(path)
   return df[(df['fold'] == 1) | (df['fold'] == 2) | (df['fold'] == 3)]
 
-def get_test_dataset():
-  df = pd.read_csv(meta_path)
+def get_test_dataset(path):
+  df = pd.read_csv(path)
   return df[df['fold'] == 5]
