@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 import pandas as pd
 import numpy as np
 import os
-#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
+
 audio_path = 'ESC-50/audio'
 mel_path = 'ESC-50/melSpec'
 meta_path  = 'ESC-50/meta/esc50.csv'
