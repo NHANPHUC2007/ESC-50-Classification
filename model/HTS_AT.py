@@ -282,6 +282,7 @@ class PatchEmbed(nn.Module):
         
         x = self.norm(x)
         return x
+
 class TransformerLayer(nn.Module):
     def __init__(self, C, input_resolution, window_W, num_blk,
                  drop_out, num_heads, qkv_bias=False, mlp_ratio=4, merge=False):
@@ -328,11 +329,11 @@ class TransformerLayer(nn.Module):
             x = self.patch_merge(x)
         return x
 
-class HTSAT_Model(nn.Module):
+class HTSAT_Backbone(nn.Module):
     def __init__(self, C=96, input_resolution=(64, 512), window_W=8,
                  depth=[2, 2, 6, 2], drop_out=0.1, num_heads=[4, 8, 16, 32], 
                  qkv_bias=True, mlp_ratio=4, in_channels=1, patch_size=4, patch_stride=4,
-                 output_dim=50):
+                 d_feature=200):
         super().__init__()
         
         self.C = C
@@ -347,8 +348,8 @@ class HTSAT_Model(nn.Module):
         self.patch_size = patch_size
         self.patch_stride = patch_stride
         
-        self.path_embed = PatchEmbed(input_resolution=input_resolution, patch_size=patch_size, 
-                                     patch_stride=patch_stride, emb_dim=C, in_channels=in_channels)
+        self.patch_embed = PatchEmbed(input_resolution=input_resolution, patch_size=patch_size, 
+                                        patch_stride=patch_stride, emb_dim=C, in_channels=in_channels)
         
         num_patches = self.path_embed.num_patches
         patch_resolution = self.path_embed.patch_resolution
@@ -370,27 +371,32 @@ class HTSAT_Model(nn.Module):
             )
             for i in range(len_depth)
         ])
-        
-        # Output
+
+        # Feature Output
         reduce_ratio = len_depth - 1
         self.trf_final_resolution = (patch_resolution[0] // (2**reduce_ratio), patch_resolution[1] // (2**reduce_ratio))
-        self.proj = nn.Conv2d(C * 2 ** reduce_ratio, output_dim, kernel_size=self.trf_final_resolution, stride=1)
+        
+        self.proj = nn.Conv2d(
+            C * 2 ** reduce_ratio, 
+            d_feature, 
+            kernel_size=(self.trf_final_resolution[0], 3), 
+            padding=(0, 1), stride=1
+        )
         
         self.len_depth = len_depth
-        
         self.final_norm = LayerNorm(C * 2 ** reduce_ratio)
-        
+    
     def forward(self, x):
         '''
             Args:
             x: (B, H, W)
             
             Return:
-            x: (B, output_dim)
+            x: (B, d_feature)
         '''
         B = x.shape[0]
-        
-        x = self.path_embed(x)
+                
+        x = self.patch_embed(x)
         x = x + self.absolute_pos_embed
         
         x = self.layers(x) # B, F/8P * T/8P, 8C
@@ -399,10 +405,44 @@ class HTSAT_Model(nn.Module):
         x = x.transpose(1, 2) # B, 8C, F/8P * T/8P
         x = x.view(B, self.C * 2 ** (self.len_depth - 1), self.trf_final_resolution[0], self.trf_final_resolution[1])
     
-        x = self.proj(x) # B, output_dim, 1
+        x = self.proj(x) # B, d_feature, 1, T/8P
+        x = x.squeeze(2).transpose(1, 2) # B, T/8P, d_fearture
         
-        x = x.flatten(1)
+        x = x.mean(dim=1) # B, d_feature
+        return x
         
+class HTSAT_Model(nn.Module):
+    def __init__(self, C=96, input_resolution=(64, 512), window_W=8,
+                 depth=[2, 2, 6, 2], drop_out=0.1, num_heads=[4, 8, 16, 32], 
+                 qkv_bias=True, mlp_ratio=4, in_channels=1, patch_size=4, patch_stride=4,
+                 d_feature=200, output_dim=50):
+        super().__init__()
+        
+        self.backbone = HTSAT_Backbone(
+            C=C, input_resolution=input_resolution, window_W=window_W,
+            depth=depth, drop_out=drop_out, num_heads=num_heads, qkv_bias=qkv_bias,
+            mlp_ratio=mlp_ratio, in_channels=in_channels, patch_size=patch_size,
+            patch_stride=patch_stride, d_feature=d_feature
+        )
+        
+        # Output
+        self.classifier = nn.Linear(d_feature, output_dim, bias=True)
+    
+    def forward_features(self, x):
+        x = self.backbone(x)
+        
+        return x
+     
+    def forward(self, x):
+        '''
+            Args:
+            x: (B, H, W)
+            
+            Return:
+            x: (B, output_dim)
+        '''
+        feature = self.forward_features(x)        
+        x = self.classifier(feature) # B, output_dim
         return x
 
 
