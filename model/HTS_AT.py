@@ -84,6 +84,7 @@ class Window_MultiHeadAttention(nn.Module):
         context_vecs = self.out_proj(context_vecs)
         
         return context_vecs
+
 class MLP(nn.Module):
     def __init__(self, in_dim, hidden_dim):
         super().__init__()
@@ -351,8 +352,8 @@ class HTSAT_Backbone(nn.Module):
         self.patch_embed = PatchEmbed(input_resolution=input_resolution, patch_size=patch_size, 
                                         patch_stride=patch_stride, emb_dim=C, in_channels=in_channels)
         
-        num_patches = self.path_embed.num_patches
-        patch_resolution = self.path_embed.patch_resolution
+        num_patches = self.patch_embed.num_patches
+        patch_resolution = self.patch_embed.patch_resolution
         len_depth = len(depth)
         self.absolute_pos_embed = nn.Parameter(torch.zeros(1, num_patches, self.C))
         
